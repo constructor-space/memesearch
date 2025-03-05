@@ -13,7 +13,8 @@ It's hard to find that exact meme when you need it. Search engines don’t alway
 - **Image search**: Get meme source by uploading an image
 
 ## Learning Value
-- **Programming Language**: Python for backend, SolidJS or Svelte for frontend
+- **Programming Language**: Python
+- **User interface**: Telegram bot, possibly a web app later
 - **Database**: PostgreSQL
 - **Search Engine**: Elasticsearch
 - **Image search**: some image hashing algorithm
