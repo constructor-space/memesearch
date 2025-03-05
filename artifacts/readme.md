@@ -14,7 +14,7 @@
 <br>
 **Artifacts**:
 - Sample memes where context search would be beneficial
-- Brainstorm ideas/tools
+- List of ideas/tools
 
 **Problem**: How to search by text efficiently?
 <br>
@@ -27,7 +27,7 @@
 <br>
 **Artifacts**: 
 - List of image hashing algorithms
-- Discuss efficient search methods, including inexact hash search
+- List of efficient search methods, including inexact hash search
 
 **Problem**: Which features should be implemented first?
 <br>
