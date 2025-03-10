@@ -1,0 +1,20 @@
+easyocr:
+  det: 2
+  rec: 1
+  result: |
+    сделай мHе
+    ПуНЬК
+ppocr:
+  det: 2
+  rec: 2
+  result: |
+    сделай
+    мне
+    пуньк
+tesseract:
+  det: 1
+  rec: 2
+  result: |
+    сделай
+    мне
+    пуньк

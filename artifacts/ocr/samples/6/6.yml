@@ -1,0 +1,23 @@
+easyocr:
+  det: 2
+  rec: 1
+  result: |
+    youflre
+    meow meow
+    my
+ppocr:
+  det: 2
+  rec: 2
+  result: |
+    уoure
+    my
+    meow
+    meow
+tesseract:
+  det: 0
+  rec: 0
+  result: |
+    —
+    —
+    уе
+    my:meowsmaow

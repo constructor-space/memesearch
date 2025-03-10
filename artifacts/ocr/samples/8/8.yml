@@ -1,0 +1,50 @@
+easyocr:
+  det: 2
+  rec: 0
+  result: |
+    Аюбцть
+    тебя
+    Я4лче ec^
+    ТЫ
+    буgelЬ
+    чене { ?чером
+    hо
+    hpol
+    ила &
+    Феfк^=
+    буфу
+ppocr:
+  det: 1
+  rec: 0
+  result: |
+    кк
+    y
+    NюаUTь
+    59a.
+    ёе
+    ы
+    yошиь
+    цe He
+    шер
+    ГЭ
+    шам
+tesseract:
+  det: 1
+  rec: 0
+  result: |
+    Фетю‚
+    &
+    Фуду
+    людить
+    T
+    Gaue
+    Cen
+    ТЫ
+    ¢
+    :
+    бучемь
+    ‚‹Аеие{?тгром
+    ho
+    npofa
+    р”
+    —<

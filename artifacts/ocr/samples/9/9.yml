@@ -1,0 +1,26 @@
+easyocr:
+  det: 2
+  rec: 2
+  result: |
+    B любой
+    непонятной
+    ситуации
+    ЛОЖИСЬ
+    СПАТЫ
+    я
+ppocr:
+  det: 2
+  rec: 1
+  result: |
+    B
+    любой
+    Hепонятной
+    ситуации
+    лоиис.
+    Cпlaты
+tesseract:
+  det: 0
+  rec: 0
+  result: |2+
+
+...

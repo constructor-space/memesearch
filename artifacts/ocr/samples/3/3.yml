@@ -1,0 +1,16 @@
+easyocr:
+  det: 2
+  rec: 2
+  result: |2+
+
+ppocr:
+  det: 2
+  rec: 2
+  result: |2+
+
+tesseract:
+  det: 2
+  rec: 2
+  result: |2+
+
+...

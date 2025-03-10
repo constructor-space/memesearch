@@ -1,0 +1,27 @@
+[project]
+name = "memesearch"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "easyocr>=1.7.2",
+    "opencv-python>=4.11.0.86",
+    "paddleocr>=2.10.0",
+    "paddlepaddle>=2.6.2",
+    "pandas>=2.2.3",
+    "pillow>=11.1.0",
+    "pytesseract>=0.3.13",
+]
+
+[tool.uv]
+override-dependencies = ["torch", "torchvision"]
+index-strategy = "unsafe-first-match"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
