@@ -1,0 +1,14 @@
+[project]
+name = "memesearch-postgres-search"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "easyocr>=1.7.2",
+    "opencv-python>=4.11.0.86",
+    "psycopg2-binary>=2.9.10",
+    "pydantic>=2.10.6",
+    "sqlalchemy>=2.0.39",
+    "testcontainers>=4.9.2",
+    "tqdm>=4.67.1",
+]

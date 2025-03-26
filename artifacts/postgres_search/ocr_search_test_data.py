@@ -22,7 +22,7 @@ def main():
     if out_file.exists():
         raise ValueError
     input_dir = input('Enter images dir: ')
-    files = list(Path(input_dir).glob('*.jpg'))
+    files = sorted(Path(input_dir).glob('*.jpg'))
     res = []
     for i, file in tqdm(enumerate(files), total=len(files)):
         name = os.path.basename(file)
