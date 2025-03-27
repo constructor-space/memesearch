@@ -20,10 +20,12 @@ def run_easyocr(image_path: str) -> str:
 def main():
     out_file = Path(__file__).absolute().parent.parent / 'postgres_search' / 'data.json'
     if out_file.exists():
-        raise ValueError
+        res = json.loads(out_file.read_text())
+    else:
+        res = []
     input_dir = input('Enter images dir: ')
-    files = sorted(Path(input_dir).glob('*.jpg'))
-    res = []
+    files_prev = {item['name'] for item in res}
+    files = sorted([x for x in Path(input_dir).rglob('*.jpg') if x.name not in files_prev])
     for i, file in tqdm(enumerate(files), total=len(files)):
         name = os.path.basename(file)
         text = run_easyocr(str(file))
