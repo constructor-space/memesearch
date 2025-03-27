@@ -12,3 +12,16 @@ dependencies = [
     "testcontainers>=4.9.2",
     "tqdm>=4.67.1",
 ]
+
+[tool.uv]
+override-dependencies = ["torch", "torchvision"]
+index-strategy = "unsafe-first-match"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
