@@ -25,7 +25,7 @@ def main():
         res = []
     input_dir = input('Enter images dir: ')
     files_prev = {item['name'] for item in res}
-    files = sorted([x for x in Path(input_dir).rglob('*.jpg') if x.name not in files_prev])
+    files = sorted([x for x in Path(input_dir).rglob('*.jpg') if x.name not in files_prev], reverse=True)
     for i, file in tqdm(enumerate(files), total=len(files)):
         name = os.path.basename(file)
         text = run_easyocr(str(file))

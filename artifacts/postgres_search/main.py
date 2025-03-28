@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Literal, Type
 
-from artifacts.postgres_search.models import get_models
+from models import get_models
 from pydantic import BaseModel
 from sqlalchemy import create_engine, insert, select, text
 from sqlalchemy.orm import Session, DeclarativeBase
@@ -39,9 +39,11 @@ def run_search_for(
         'меня никто не понимает',
     ]
     for query in queries:
-        dist = Data.text.op(operator)(query).label('dist')
-        q = select(dist, Data.name).where(dist < 0.7).order_by(dist)
-        results = [(dist, name) for (dist, name) in session.execute(q).all()]
+        for _ in range(10):
+            dist = Data.text.op(operator)(query).label('dist')
+            q = select(dist, Data.name).where(dist < 0.7).order_by(dist)
+            results = [(dist, name) for (dist, name) in session.execute(q).all()]
+        query_count += 10
         qres.append(QueryResults(query=query, results=results))
     return OperatorResults(
         time=time.perf_counter() - t, query_count=query_count, queries=qres
@@ -69,7 +71,7 @@ def run_test_for(index_type: Literal['gin', 'gist']) -> None:
             session.execute(insert(Data.__table__), data)
         creation = time.perf_counter() - t
         operators = {}
-        for operator in ('<->', '<->>', '<->>'):
+        for operator in ('<->', '<->>', '<->>>'):
             with Session(engine) as session, session.begin():
                 operators[operator] = run_search_for(session, Data, operator)
         results = IndexResults(
