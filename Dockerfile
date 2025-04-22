@@ -1,5 +1,6 @@
 FROM python:3.12-slim as base
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN apt-get update && apt-get install -y libgl-dev libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 FROM base as builder
@@ -16,7 +17,6 @@ RUN --mount=type=bind,source=app/scripts/download_model.py,target=download_model
 FROM base as runner
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /root/.EasyOCR /root/.EasyOCR
-RUN apt-get update && apt-get install -y libgl-dev libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 COPY app app
 COPY alembic alembic
 COPY pyproject.toml uv.lock bot-cmd.sh alembic.ini ./
