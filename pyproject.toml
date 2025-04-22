@@ -1,0 +1,32 @@
+[project]
+name = "memesearch"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.15.2",
+    "asyncpg>=0.30.0",
+    "cryptg>=0.5.0.post0",
+    "easyocr>=1.7.2",
+    "fastapi>=0.115.12",
+    "opencv-python>=4.11.0.86",
+    "pydantic>=2.11.3",
+    "pydantic-settings>=2.8.1",
+    "sqlalchemy>=2.0.40",
+    "telethon>=1.39.0",
+    "tqdm>=4.67.1",
+    "uvicorn>=0.34.1",
+]
+
+[tool.uv]
+override-dependencies = ["torch", "torchvision"]
+index-strategy = "unsafe-first-match"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
