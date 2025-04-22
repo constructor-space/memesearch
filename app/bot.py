@@ -37,7 +37,7 @@ def image_to_tg(image: Image):
 @bot.on(InlineQuery())
 async def on_inline(e: InlineQuery.Event):
     dist = Image.text.op('<->>')(e.text).label('dist')
-    limit = 50 if not config.debug else 10
+    limit = 10
     images = await db.fetch_vals(
         select(Image).where(dist < 0.7).order_by(dist).limit(limit)
     )
