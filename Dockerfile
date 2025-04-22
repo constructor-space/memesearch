@@ -13,7 +13,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM base as runner
 COPY --from=builder /app/.venv /app/.venv
-COPY . .
+COPY app app
+COPY alembic alembic
+COPY pyproject.toml uv.lock bot-cmd.sh alembic.ini ./
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV DATA_DIR=/data
