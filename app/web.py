@@ -9,7 +9,6 @@ app = FastAPI()
 
 
 @app.get('/{sha256}.jpg')
-@app.get('/{sha256}')
 async def get_file(sha256: str):
     return FileResponse(IMAGES_DIR / f'{sha256}.jpg')
 
