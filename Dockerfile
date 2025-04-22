@@ -21,4 +21,6 @@ COPY pyproject.toml uv.lock bot-cmd.sh alembic.ini ./
 ENV PATH="/app/.venv/bin:$PATH"
 ENV DATA_DIR=/data
 
+RUN python -m app.scripts.download_model
+
 EXPOSE 8000
