@@ -28,10 +28,11 @@ bot.add_middleware(create_db_session_middleware)
 
 
 def image_to_tg(image: Image):
-    if config.debug:
-        return IMAGES_DIR / f'{image.sha256}.jpg'
-    else:
-        return config.external_url + f'/{image.sha256}.jpg'
+    return IMAGES_DIR / f'{image.sha256}.jpg'
+    #if config.debug:
+    #    return IMAGES_DIR / f'{image.sha256}.jpg'
+    #else:
+    #    return config.external_url + f'/{image.sha256}.jpg'
 
 
 @bot.on(InlineQuery())
