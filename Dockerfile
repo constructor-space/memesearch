@@ -13,6 +13,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM base as runner
 COPY --from=builder /app/.venv /app/.venv
+RUN apt-get update && apt-get install -y libgl-dev libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 COPY app app
 COPY alembic alembic
 COPY pyproject.toml uv.lock bot-cmd.sh alembic.ini ./
