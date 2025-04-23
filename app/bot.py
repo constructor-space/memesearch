@@ -50,5 +50,6 @@ async def on_inline(e: InlineQuery.Event):
                 id=str(uuid4()),
             )
             for image in images
-        ]
+        ],
+        gallery=True,
     )
