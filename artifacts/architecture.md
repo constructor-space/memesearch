@@ -1,34 +1,33 @@
 ```mermaid
 
-flowchart TD
-%% Out-of-Scope Elements (styled in grey)
-    Scraper[External Meme Scraper]
-    RawDataStorage[(Raw Meme Storage)]
-    User[User]
+flowchart-elk TD
 
-%% In-Scope Processing Pipeline
-    Importer[Importer]
-    TextExtractor[OCR Text Extractor]
-    Database[(Main DB/index)]
-    TelegramBot[Telegram bot]
+Importer[Importer]
+Scraper[Scraper]
+OCR[OCR]
+Vision[Vision Model]
+Database[(Database)]
+ImageStore[(Image store)]
+TelegramBot[Telegram bot]
 
-%% Data Flow
-    Scraper -->|Writes images and metadata| RawDataStorage
+User -->|Returns matching memes| TelegramBot
+TelegramBot --> Storage
 
-    Importer --> RawDataStorage
-    subgraph Pipeline [Indexer]
-        Importer --> TextExtractor
-        TextExtractor  -->|Indexing| Database
-    end
-    TelegramBot --> Database
+subgraph DataSources [Data Sources]
+    Importer
+    Scraper
+end
 
+DataSources --> TextExtraction
+DataSources --> ImageStore
 
-%% Query Pipeline
-    User -->|Returns matching memes| TelegramBot
-
-%% Style out-of-scope elements
-    style Scraper fill:#d3d3d3,stroke:#333,stroke-width:2px
-    style RawDataStorage fill:#d3d3d3,stroke:#333,stroke-width:2px
-    style User fill:#d3d3d3,stroke:#333,stroke-width:2px
-
+subgraph TextExtraction [Text extractors]
+    OCR
+    Vision
+end
+TextExtraction -->|Indexing| Database
+subgraph Storage
+    ImageStore
+    Database
+end
 ```
