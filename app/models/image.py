@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 class Image(Base):
     __tablename__ = 'image'
     id: Mapped[int] = mapped_column(primary_key=True)
-    sha256: Mapped[str] = mapped_column(unique=True)
+    phash: Mapped[str] = mapped_column(unique=True)
     text: Mapped[str]
     __table_args__ = (
         sa.Index(

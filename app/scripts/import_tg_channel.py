@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import json
 import os
-import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +9,8 @@ import cv2
 import easyocr
 from sqlalchemy import select
 from tqdm import tqdm
+from PIL import Image as PILImage
+from imagehash import phash
 
 from app.db import new_session, session, fetch_val
 from app.models.channel import Channel, ChannelMessage
@@ -37,20 +38,20 @@ async def process_image(
     # Ensure images directory exists
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Calculate SHA256 hash of the image
+    # Calculate phash of the image
     with open(photo_path, 'rb') as f:
         file_content = f.read()
-        sha256 = hashlib.sha256(file_content).hexdigest()
+    image_phash = str(phash(PILImage.open(photo_path)))
 
     # Copy image to the images directory with hash as name
-    target_path = IMAGES_DIR / f'{sha256}.jpg'
+    target_path = IMAGES_DIR / f'{image_phash}.jpg'
     if not target_path.exists():
         with open(target_path, 'wb') as f:
             f.write(file_content)
 
     # If ocr_result is provided, use it
     if ocr_result:
-        return sha256, ocr_result
+        return image_phash, ocr_result
 
     # Convert image for OCR
     image_cv2 = cv2.cvtColor(cv2.imread(photo_path), cv2.COLOR_BGR2RGB)
@@ -59,15 +60,15 @@ async def process_image(
     ocr_result = eocr.readtext(image_cv2)
     ocr_text = '\n'.join([item[1] for item in ocr_result])
 
-    return sha256, ocr_text or 'No text detected'
+    return image_phash, ocr_text or 'No text detected'
 
 
-async def get_or_create_image(sha256: str, text: str) -> Image:
+async def get_or_create_image(image_phash: str, text: str) -> Image:
     """Get existing image or create a new one"""
-    image = await fetch_val(select(Image).where(Image.sha256 == sha256))
+    image = await fetch_val(select(Image).where(Image.phash == image_phash))
 
     if not image:
-        image = Image(sha256=sha256, text=text)
+        image = Image(phash=image_phash, text=text)
         session.add(image)
         await session.flush()
 
@@ -117,10 +118,10 @@ async def import_from_json(base_dir: Path, ocr_result_path: Optional[str] = None
         ocr_text = ocr_results.get(photo_name) if ocr_results else None
 
         # Process image
-        sha256, text = await process_image(photo_path, ocr_text)
+        image_phash, text = await process_image(photo_path, ocr_text)
 
         # Get or create image record
-        image = await get_or_create_image(sha256, text)
+        image = await get_or_create_image(image_phash, text)
 
         # Link image to channel
         message_id = message.get('id')
