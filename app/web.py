@@ -8,9 +8,9 @@ from app.config import IMAGES_DIR, config
 app = FastAPI()
 
 
-@app.get('/{sha256}.jpg')
-async def get_file(sha256: str):
-    return FileResponse(IMAGES_DIR / f'{sha256}.jpg')
+@app.get('/{phash}.jpg')
+async def get_file(phash: str):
+    return FileResponse(IMAGES_DIR / f'{phash}.jpg')
 
 
 if __name__ == '__main__':
