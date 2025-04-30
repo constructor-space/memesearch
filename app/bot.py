@@ -1,13 +1,16 @@
 from uuid import uuid4
+
+from imagehash import phash
 from sqlalchemy import select
 from app import db
-from app.bot_client import BotClient, MiddlewareCallback
+from app.bot_client import BotClient, MiddlewareCallback, NewMessage
 from app.config import IMAGES_DIR, SESSION_FILE, config
 from telethon.events import StopPropagation, InlineQuery
 from telethon.events.common import EventCommon
+from PIL import Image as PILImage
 
-from app.db import new_session
-from app.models import Image
+from app.db import new_session, fetch_val
+from app.models import Image, ChannelMessage
 
 
 async def create_db_session_middleware(
@@ -52,3 +55,29 @@ async def on_inline(e: InlineQuery.Event):
         ],
         gallery=True,
     )
+
+@bot.on(NewMessage())
+async def on_new_message(e: NewMessage.Event):
+    if e.message.photo is None:
+        await e.reply("Please send me an image for reverse search.")
+        return
+
+    photo_save_path = f"/tmp/{e.message.photo.id}.jpg"
+    await e.message.download_media(file=photo_save_path, thumb=-1)
+    image_phash = str(phash(PILImage.open(photo_save_path)))
+
+    image = await fetch_val(
+        select(Image).where(Image.phash == image_phash)
+    )
+    if not image:
+        await e.reply("Image not found.")
+        return
+
+    message = await fetch_val(
+        select(ChannelMessage).where(ChannelMessage.image_id == image.id)
+    )
+    if not message:
+        await e.reply("Image not found.")
+        return
+
+    await e.reply(f"t.me/c/{message.channel_id}/{message.message_id}")
