@@ -1,3 +1,4 @@
+from operator import concat
 from uuid import uuid4
 
 from imagehash import phash
@@ -56,7 +57,7 @@ async def on_inline(e: InlineQuery.Event):
         gallery=True,
     )
 
-@bot.on(NewMessage())
+@bot.on(NewMessage(pm_only=True))
 async def on_new_message(e: NewMessage.Event):
     if e.message.photo is None:
         await e.reply("Please send me an image for reverse search.")
@@ -73,5 +74,4 @@ async def on_new_message(e: NewMessage.Event):
         await e.reply("Image not found.")
         return
 
-    for message in messages:
-        await e.reply(f"t.me/c/{message.channel_id}/{message.message_id}")
+    await e.reply("\n".join([f"t.me/c/{message.channel_id}/{message.message_id}" for message in messages]))
