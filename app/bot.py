@@ -1,20 +1,24 @@
 import tempfile
 from uuid import uuid4
+
+from imagehash import phash
 from sqlalchemy import select
 from telethon.tl.types import InputMessagesFilterPhotos
 
 from app import db
-from app.bot_client import BotClient, MiddlewareCallback, Command
+from app.bot_client import BotClient, MiddlewareCallback, NewMessage, Command
 from app.config import IMAGES_DIR, SESSION_FILE, config
 from telethon.events import StopPropagation, InlineQuery
 from telethon.events.common import EventCommon
+from PIL import Image as PILImage
 
-from app.db import new_session, session
+from app.db import new_session, fetch_vals, session
 from app.models import Image, ChannelMessage
 from app.scripts.import_tg_channel import process_image, get_or_create_image, get_or_create_channel
 from app.userbot_client import client
 
 from sqlalchemy.dialects.postgresql import insert
+
 
 
 async def create_db_session_middleware(
@@ -36,9 +40,9 @@ bot.add_middleware(create_db_session_middleware)
 
 def image_to_tg(image: Image):
     if config.debug:
-       return IMAGES_DIR / f'{image.sha256}.jpg'
+       return IMAGES_DIR / f'{image.phash}.jpg'
     else:
-       return config.external_url + f'/{image.sha256}.jpg'
+       return config.external_url + f'/{image.phash}.jpg'
 
 
 @bot.on(InlineQuery())
@@ -59,6 +63,26 @@ async def on_inline(e: InlineQuery.Event):
         ],
         gallery=True,
     )
+
+@bot.on(NewMessage(pm_only=True))
+async def on_new_message(e: NewMessage.Event):
+    if e.message.photo is None:
+        await e.reply("Please send me an image for reverse search.")
+        return
+
+    photo_save_path = f"/tmp/{e.message.photo.id}.jpg"
+    await e.message.download_media(file=photo_save_path, thumb=-1)
+    image_phash = str(phash(PILImage.open(photo_save_path)))
+
+    messages = await fetch_vals(
+        select(ChannelMessage).join(Image).where(Image.phash == image_phash)
+    )
+    if not messages:
+        await e.reply("Image not found.")
+        return
+
+    await e.reply("\n".join([f"t.me/c/{message.channel_id}/{message.message_id}" for message in messages]))
+
 
 @bot.on(Command('download_channel'))
 async def on_start(e: Command.Event):
