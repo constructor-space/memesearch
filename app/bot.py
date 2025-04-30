@@ -90,7 +90,7 @@ async def on_start(e: Command.Event):
         return
     channel_name = e.args
     channel_tg = await client.get_entity(channel_name)
-    channel = await get_or_create_channel(channel_tg)
+    channel = await get_or_create_channel(channel_tg.id, channel_tg.title, channel_tg.username)
     it = client.iter_messages(channel_tg, filter=InputMessagesFilterPhotos)
     mess = await e.message.reply(f'Downloading 0 of {it.total}')
     i = 0

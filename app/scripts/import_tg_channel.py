@@ -16,16 +16,15 @@ from app.db import new_session, session, fetch_val
 from app.models.channel import Channel, ChannelMessage
 from app.models.image import Image
 from app.config import IMAGES_DIR
-from telethon.tl.types import Channel as ChannelTg
 
 eocr = easyocr.Reader(['ru', 'en'])
 
 
-async def get_or_create_channel(channel_tg: ChannelTg) -> Channel:
+async def get_or_create_channel(id_: int, title: str, username: str) -> Channel:
     """Get existing channel or create a new one"""
-    channel = await Channel.get(channel_tg.id)
+    channel = await Channel.get(id_)
     if not channel:
-        channel = Channel(id=channel_tg.id, name=channel_tg.title, username=channel_tg.username)
+        channel = Channel(id=id_, name=title, username=username)
         session.add(channel)
         await session.flush()
     return channel
@@ -96,12 +95,13 @@ async def import_from_json(base_dir: Path, ocr_result_path: Optional[str] = None
     # Extract channel info
     channel_id = data.get('id')
     channel_name = data.get('name')
+    channel_username = input('Channel username: ')
 
     if not channel_id or not channel_name:
         raise ValueError('Invalid channel data in JSON file')
 
     # Get or create channel
-    channel = await get_or_create_channel(channel_id, channel_name)
+    channel = await get_or_create_channel(channel_id, channel_name, channel_username)
 
     # Process messages
     for message in tqdm(data.get('messages', [])):
