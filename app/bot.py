@@ -9,7 +9,7 @@ from telethon.events import StopPropagation, InlineQuery
 from telethon.events.common import EventCommon
 from PIL import Image as PILImage
 
-from app.db import new_session, fetch_val
+from app.db import new_session, fetch_vals
 from app.models import Image, ChannelMessage
 
 
@@ -66,18 +66,12 @@ async def on_new_message(e: NewMessage.Event):
     await e.message.download_media(file=photo_save_path, thumb=-1)
     image_phash = str(phash(PILImage.open(photo_save_path)))
 
-    image = await fetch_val(
-        select(Image).where(Image.phash == image_phash)
+    messages = await fetch_vals(
+        select(ChannelMessage).join(Image).where(Image.phash == image_phash)
     )
-    if not image:
+    if not messages:
         await e.reply("Image not found.")
         return
 
-    message = await fetch_val(
-        select(ChannelMessage).where(ChannelMessage.image_id == image.id)
-    )
-    if not message:
-        await e.reply("Image not found.")
-        return
-
-    await e.reply(f"t.me/c/{message.channel_id}/{message.message_id}")
+    for message in messages:
+        await e.reply(f"t.me/c/{message.channel_id}/{message.message_id}")
