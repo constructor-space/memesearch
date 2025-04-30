@@ -20,5 +20,9 @@ class Config(BaseSettings):
 config = Config(_env_file='.env')
 SESSION_FILE = config.data_dir / 'bot.session'
 IMAGES_DIR = config.data_dir / 'images'
+USERBOT_SESSION_FILE = config.data_dir / 'userbot.session'
+
+config.data_dir.mkdir(parents=True, exist_ok=True)
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 __all__ = ['config', 'SESSION_FILE', 'IMAGES_DIR']

@@ -16,15 +16,16 @@ from app.db import new_session, session, fetch_val
 from app.models.channel import Channel, ChannelMessage
 from app.models.image import Image
 from app.config import IMAGES_DIR
+from telethon.tl.types import Channel as ChannelTg
 
 eocr = easyocr.Reader(['ru', 'en'])
 
 
-async def get_or_create_channel(channel_id: int, channel_name: str) -> Channel:
+async def get_or_create_channel(channel_tg: ChannelTg) -> Channel:
     """Get existing channel or create a new one"""
-    channel = await Channel.get(channel_id)
+    channel = await Channel.get(channel_tg.id)
     if not channel:
-        channel = Channel(id=channel_id, name=channel_name)
+        channel = Channel(id=channel_tg.id, name=channel_tg.title, username=channel_tg.username)
         session.add(channel)
         await session.flush()
     return channel

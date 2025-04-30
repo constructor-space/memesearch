@@ -7,6 +7,7 @@ class Channel(Base):
     __tablename__ = 'channel'
     id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
     name: Mapped[str]
+    username: Mapped[str] = mapped_column(unique=True, index=True)
 
 
 class ChannelMessage(Base):
