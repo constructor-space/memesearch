@@ -14,7 +14,7 @@ from PIL import Image as PILImage
 
 from app.db import new_session, fetch_vals, session
 from app.models import Image, ChannelMessage
-from app.scripts.import_tg_channel import process_image, get_or_create_image, get_or_create_channel
+from app.utils import get_or_create_channel, process_image, get_or_create_image
 from app.userbot_client import client
 
 from sqlalchemy.dialects.postgresql import insert
