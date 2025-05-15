@@ -1,3 +1,5 @@
+import shutil
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -22,28 +24,29 @@ async def get_or_create_channel(id_: int, title: str, username: str) -> Channel:
         await session.flush()
     return channel
 
+def calculate_phash(image_path: str) -> str:
+    """Calculate perceptual hash of an image"""
+    with open(image_path, 'rb') as f:
+        file_content = f.read()
+    return str(phash(PILImage.open(image_path)))
 
-async def process_image(
+def save_image(image_path: str, phash: str) -> Path:
+    """Save image to the IMAGES_DIR with its phash as filename"""
+    target_path = IMAGES_DIR / f'{phash}.jpg'
+    if not target_path.exists():
+        shutil.copy(image_path, target_path)
+    return target_path
+
+def process_image(
     photo_path: str, ocr_result: Optional[str] = None
-) -> tuple[str, str]:
+) -> str:
     """Process an image file and return its hash and text content"""
     # Ensure images directory exists
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Calculate phash of the image
-    with open(photo_path, 'rb') as f:
-        file_content = f.read()
-    image_phash = str(phash(PILImage.open(photo_path)))
-
-    # Copy image to the images directory with hash as name
-    target_path = IMAGES_DIR / f'{image_phash}.jpg'
-    if not target_path.exists():
-        with open(target_path, 'wb') as f:
-            f.write(file_content)
-
     # If ocr_result is provided, use it
     if ocr_result:
-        return image_phash, ocr_result
+        return ocr_result
 
     # Convert image for OCR
     image_cv2 = cv2.cvtColor(cv2.imread(photo_path), cv2.COLOR_BGR2RGB)
@@ -52,7 +55,7 @@ async def process_image(
     ocr_result = eocr.readtext(image_cv2)
     ocr_text = '\n'.join([item[1] for item in ocr_result])
 
-    return image_phash, ocr_text or 'No text detected'
+    return ocr_text or 'No text detected'
 
 
 async def get_or_create_image(image_phash: str, text: str) -> Image:

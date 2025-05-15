@@ -1,26 +1,29 @@
+import asyncio
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from pathlib import Path
 from uuid import uuid4
 
+from PIL import Image as PILImage
 from imagehash import phash
 from sqlalchemy import select
-from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import DocumentAttributeSticker
+from sqlalchemy.dialects.postgresql import insert
 from telethon import Button
-
-from app import db
-from app.bot_client import BotClient, MiddlewareCallback, NewMessage, Command
-from app.config import IMAGES_DIR, SESSION_FILE, config
 from telethon.events import StopPropagation, InlineQuery
 from telethon.events.common import EventCommon
-from PIL import Image as PILImage
+from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.types import InputMessagesFilterPhotos, DocumentAttributeSticker
 
+from app import db
+from app.bot_client import BotClient, MiddlewareCallback, NewMessage, Command, Message
+from app.config import IMAGES_DIR, SESSION_FILE, config
 from app.db import new_session, fetch_vals
 from app.models import Image, ChannelMessage
 from app.models.sticker import Sticker, StickerSet
-from app.utils import get_or_create_channel, process_image, get_or_create_image
 from app.userbot_client import client
-
-from sqlalchemy.dialects.postgresql import insert
+from app.utils import get_or_create_channel, process_image, get_or_create_image, calculate_phash, save_image
 
 
 async def create_db_session_middleware(
@@ -118,37 +121,90 @@ async def on_new_message(e: NewMessage.Event):
     await e.reply('Image not found.')
 
 
+@dataclass
+class StickerJob:
+    file_path: Path
+    sticker_pack_id: int
+
+
+@dataclass
+class MessageJob:
+    file_path: Path
+    channel_id: int
+    message_id: int
+
 
 @bot.on(Command('download_channel'))
-async def on_start(e: Command.Event):
+async def on_download_channel(e: Command.Event):
     if e.message.chat_id != config.admin_group_id:
         return
+
     channel_name = e.args
     channel_tg = await client.get_entity(channel_name)
-    channel = await get_or_create_channel(
-        channel_tg.id, channel_tg.title, channel_tg.username
-    )
-    it = client.iter_messages(channel_tg)
-    mess = await e.message.reply(f'Downloading 0 of {it.total}')
-    i = 0
+    async with new_session():
+        channel = await get_or_create_channel(
+            channel_tg.id, channel_tg.title, channel_tg.username
+        )
+
+    work_q: asyncio.Queue[StickerJob | MessageJob | None] = asyncio.Queue()
+    processed = queued = 0
+    last_edited = time.time()
+    mess = await e.message.reply('Downloading 0 / Processed 0')
+
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    async def worker():
+        nonlocal last_edited
+        nonlocal processed
+        loop = asyncio.get_running_loop()
+        while True:
+            item = await work_q.get()
+            if item is None:          # сигнал завершения
+                work_q.task_done()
+                break
+
+            try:
+                text = await loop.run_in_executor(executor, process_image, str(path))
+                async with new_session():
+                    img = await get_or_create_image(ph, text)
+                    if isinstance(item, MessageJob):
+                        await db.session.execute(
+                            insert(ChannelMessage)
+                            .values(
+                                channel_id=item.channel_id,
+                                image_id=img.id,
+                                message_id=item.message_id,
+                            )
+                            .on_conflict_do_nothing()
+                        )
+                    elif isinstance(item, StickerJob):
+                        await db.session.execute(insert(Sticker).values(
+                            image_id=img.id,
+                            sticker_pack_id=item.sticker_pack_id,
+                        ).on_conflict_do_nothing())
+                    else:
+                        raise TypeError(f'Unknown item type: {type(item)}')
+                processed += 1
+                if time.time() - last_edited > 10:
+                    last_edited = time.time()
+                    await mess.edit(f'Downloading {queued} / Processed {processed}')
+            except Exception as e:
+                print(f'Error processing {path}: {e}')
+            finally:
+                work_q.task_done()
+
+    worker_task = asyncio.create_task(worker())
+
+    it = client.iter_messages(channel_tg, filter=InputMessagesFilterPhotos)
     async for message in it:
-        if i % 10 == 0:
-            await mess.edit(f'Downloading {i} of {it.total}')
+        message: Message
         if message.photo:
             with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
                 await message.download_media(fp)
                 fp.close()
-                image_phash, ocr_text = await process_image(fp.name)
-            image = await get_or_create_image(image_phash, ocr_text)
-            await db.session.execute(
-                insert(ChannelMessage)
-                .values(
-                    channel_id=channel.id,
-                    image_id=image.id,
-                    message_id=message.id,
-                )
-                .on_conflict_do_nothing()
-            )
+                ph = calculate_phash(fp.name)
+                path = save_image(fp.name, ph)
+            await work_q.put(MessageJob(path, channel.id, message.id))
         elif message.sticker:
             input_sticker_set = next(attr for attr in message.document.attributes if isinstance(attr, DocumentAttributeSticker)).stickerset
             sticker_set = await client(GetStickerSetRequest(input_sticker_set, 0))
@@ -160,11 +216,19 @@ async def on_start(e: Command.Event):
                 with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
                     await client.download_media(document, fp)
                     fp.close()
-                    image_phash, ocr_text = await process_image(fp.name)
-                image = await get_or_create_image(image_phash, ocr_text)
-                await db.session.execute(insert(Sticker).values(
-                    image_id=image.id,
-                    sticker_pack_id=sticker_set.set.id,
-                ).on_conflict_do_nothing())
-        i += 1
-    await mess.edit(f'Downloaded {i} of {it.total}')
+                    ph = calculate_phash(fp.name)
+                    path = save_image(fp.name, ph)
+                await work_q.put(StickerJob(path, sticker_set.set.id))
+        else:
+            continue
+        queued += 1
+        if time.time() - last_edited > 10:
+            last_edited = time.time()
+            await mess.edit(f'Downloading {queued} / Processed {processed}')
+
+    await work_q.join()
+    await work_q.put(None)
+    await worker_task
+    executor.shutdown(wait=True)
+
+    await mess.edit(f'Download finished: {queued} queued, {processed} processed')

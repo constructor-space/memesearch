@@ -59,7 +59,7 @@ async def import_from_json(base_dir: Path, ocr_result_path: Optional[str] = None
         ocr_text = ocr_results.get(photo_name) if ocr_results else None
 
         # Process image
-        image_phash, text = await process_image(photo_path, ocr_text)
+        image_phash, text = process_image(photo_path, ocr_text)
 
         # Get or create image record
         image = await get_or_create_image(image_phash, text)
