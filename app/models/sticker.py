@@ -13,5 +13,5 @@ class Sticker(Base):
 
 class StickerSet(Base):
     __tablename__ = 'sticker_set'
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
     short_name: Mapped[str]
