@@ -1,23 +1,16 @@
-import argparse
-import asyncio
-import json
-import os
-from pathlib import Path
 from typing import Optional
 
 import cv2
 import easyocr
 from sqlalchemy import select
-from tqdm import tqdm
 from PIL import Image as PILImage
 from imagehash import phash
 
-from app.db import new_session, session, fetch_val
+from app.db import session, fetch_val
 from app.models import Channel, Image
-from app.models.channel import Channel, ChannelMessage
-from app.models.image import Image
 from app.config import IMAGES_DIR
-from app.scripts.import_tg_channel import eocr
+
+eocr = easyocr.Reader(['ru', 'en'])
 
 
 async def get_or_create_channel(id_: int, title: str, username: str) -> Channel:

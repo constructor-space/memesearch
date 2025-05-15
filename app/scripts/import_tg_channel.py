@@ -14,8 +14,6 @@ from app.models.channel import ChannelMessage
 from app.config import IMAGES_DIR
 from app.utils import get_or_create_channel, process_image, get_or_create_image
 
-eocr = easyocr.Reader(['ru', 'en'])
-
 
 async def import_from_json(base_dir: Path, ocr_result_path: Optional[str] = None):
     """Import data from Telegram JSON export"""
