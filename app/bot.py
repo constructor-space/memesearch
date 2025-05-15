@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from imagehash import phash
 from sqlalchemy import select
+from telethon import Button
 from telethon.tl.types import InputMessagesFilterPhotos
 
 from app import db
@@ -20,7 +21,6 @@ from app.userbot_client import client
 from sqlalchemy.dialects.postgresql import insert
 
 
-
 async def create_db_session_middleware(
     event: EventCommon, callback: MiddlewareCallback
 ):
@@ -36,6 +36,22 @@ async def create_db_session_middleware(
 
 bot = BotClient(str(SESSION_FILE), config.api_id, config.api_hash)
 bot.add_middleware(create_db_session_middleware)
+
+
+@bot.on(Command('start'))
+@bot.on(Command('help'))
+async def on_start(e: Command.Event):
+    await e.message.respond(
+        f'Hi! I can help you find memes from Telegram.'
+        f'Click on a button below to try or type `@{bot.me.username}` in any chat.'
+        f'\n\n'
+        f'You can also send me a photo to find channels where it was posted.',
+        buttons=[
+            [Button.switch_inline('Try in this chat', same_peer=True)],
+            [Button.switch_inline('Try in other chat')],
+        ],
+        parse_mode='markdown',
+    )
 
 
 def image_to_tg(image: Image):
@@ -71,10 +87,10 @@ async def on_inline(e: InlineQuery.Event):
 @bot.on(NewMessage(pm_only=True))
 async def on_new_message(e: NewMessage.Event):
     if e.message.photo is None:
-        await e.reply("Please send me an image for reverse search.")
+        await e.reply('Please send me an image for reverse search.')
         return
 
-    photo_save_path = f"/tmp/{e.message.photo.id}.jpg"
+    photo_save_path = f'/tmp/{e.message.photo.id}.jpg'
     await e.message.download_media(file=photo_save_path, thumb=-1)
     image_phash = str(phash(PILImage.open(photo_save_path)))
 
@@ -82,10 +98,17 @@ async def on_new_message(e: NewMessage.Event):
         select(ChannelMessage).join(Image).where(Image.phash == image_phash)
     )
     if not messages:
-        await e.reply("Image not found.")
+        await e.reply('Image not found.')
         return
 
-    await e.reply("\n".join([f"t.me/c/{message.channel_id}/{message.message_id}" for message in messages]))
+    await e.reply(
+        '\n'.join(
+            [
+                f't.me/c/{message.channel_id}/{message.message_id}'
+                for message in messages
+            ]
+        )
+    )
 
 
 @bot.on(Command('download_channel'))
@@ -94,7 +117,9 @@ async def on_start(e: Command.Event):
         return
     channel_name = e.args
     channel_tg = await client.get_entity(channel_name)
-    channel = await get_or_create_channel(channel_tg.id, channel_tg.title, channel_tg.username)
+    channel = await get_or_create_channel(
+        channel_tg.id, channel_tg.title, channel_tg.username
+    )
     it = client.iter_messages(channel_tg, filter=InputMessagesFilterPhotos)
     mess = await e.message.reply(f'Downloading 0 of {it.total}')
     i = 0
@@ -108,10 +133,14 @@ async def on_start(e: Command.Event):
             fp.close()
             image_phash, ocr_text = await process_image(fp.name)
         image = await get_or_create_image(image_phash, ocr_text)
-        await db.session.execute(insert(ChannelMessage).values(
-            channel_id=channel.id,
-            image_id=image.id,
-            message_id=message.id,
-        ).on_conflict_do_nothing())
+        await db.session.execute(
+            insert(ChannelMessage)
+            .values(
+                channel_id=channel.id,
+                image_id=image.id,
+                message_id=message.id,
+            )
+            .on_conflict_do_nothing()
+        )
         i += 1
     await mess.edit(f'Downloaded {i} of {it.total}')
