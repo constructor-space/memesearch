@@ -8,10 +8,10 @@ class Sticker(Base):
     image_id: Mapped[int] = mapped_column(
         sa.BigInteger, sa.ForeignKey('image.id'), unique=True)
     sticker_pack_id: Mapped[int] = mapped_column(
-        sa.BigInteger, sa.ForeignKey('sticker_pack.id'), unique=True
+        sa.BigInteger, sa.ForeignKey('sticker_set.id'), unique=True
     )
 
-class StickerPack(Base):
-    __tablename__ = 'sticker_pack'
+class StickerSet(Base):
+    __tablename__ = 'sticker_set'
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str]
+    short_name: Mapped[str]
