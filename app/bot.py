@@ -40,17 +40,19 @@ bot.add_middleware(create_db_session_middleware)
 
 def image_to_tg(image: Image):
     if config.debug:
-       return IMAGES_DIR / f'{image.phash}.jpg'
+        return IMAGES_DIR / f'{image.phash}.jpg'
     else:
-       return config.external_url + f'/{image.phash}.jpg'
+        return config.external_url + f'/{image.phash}.jpg'
 
 
 @bot.on(InlineQuery())
 async def on_inline(e: InlineQuery.Event):
+    offset = int(e.offset or '0')
+
     dist = Image.text.op('<->>')(e.text).label('dist')
     limit = 10
     images = await db.fetch_vals(
-        select(Image).where(dist < 0.7).order_by(dist).limit(limit)
+        select(Image).where(dist < 0.7).order_by(dist).limit(limit).offset(offset)
     )
 
     await e.answer(
@@ -62,7 +64,9 @@ async def on_inline(e: InlineQuery.Event):
             for image in images
         ],
         gallery=True,
+        next_offset=str(offset + limit),
     )
+
 
 @bot.on(NewMessage(pm_only=True))
 async def on_new_message(e: NewMessage.Event):
