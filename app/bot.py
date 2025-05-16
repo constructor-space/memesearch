@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 import sqlalchemy as sa
+from imagehash import phash
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from telethon import Button, events
@@ -16,12 +17,12 @@ from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import DocumentAttributeSticker, UpdateBotInlineSend, Photo, Document, InputPhoto, InputDocument
 
 from app import db
-from app.bot_client import BotClient, MiddlewareCallback, Command, Message
+from app.bot_client import BotClient, MiddlewareCallback, Command, Message, NewMessage
 from app.config import IMAGES_DIR, SESSION_FILE, config
 from app.db import new_session
-from app.models import Image
+from app.models import Image, ChannelMessage
 from app.models.image_usage import ImageUsage
-from app.models.sticker import StickerSet
+from app.models.sticker import StickerSet, Sticker
 from app.userbot_client import client
 from app.utils import (
     get_or_create_channel,
@@ -32,7 +33,7 @@ from app.utils import (
     download_to_path,
     embed_text, embed_image,
 )
-
+from PIL import Image as PILImage
 
 async def create_db_session_middleware(
     _event: Any, callback: MiddlewareCallback
@@ -178,6 +179,38 @@ async def on_inline(e: InlineQuery.Event):
         return
 
     await respond_with_images(e, images, offset, limit)
+
+
+@bot.on(NewMessage(pm_only=True))
+async def on_new_message(e: NewMessage.Event):
+    if e.message.photo is None:
+        await e.reply('Please send me an image for reverse search.')
+        return
+
+    photo_save_path = f'/tmp/{e.message.photo.id}.jpg'
+    await e.message.download_media(file=photo_save_path, thumb=-1)
+    image_phash = str(phash(PILImage.open(photo_save_path)))
+
+    messages = await db.fetch_vals(
+        select(ChannelMessage).join(Image).where(Image.phash == image_phash)
+    )
+    if messages:
+        await e.reply(
+            '\n'.join(
+                [
+                    f't.me/c/{message.channel_id}/{message.message_id}'
+                    for message in messages
+                ]
+            )
+        )
+        return
+    sticker_sets = await db.fetch_vals(
+        select(StickerSet).join(Sticker).join(Image)
+    )
+    if sticker_sets:
+        await e.reply("\n".join([f"t.me/addstickers/{pack.short_name}" for pack in sticker_sets]))
+        return
+    await e.reply('Image not found.')
 
 
 OCR_EXECUTOR = ThreadPoolExecutor(max_workers=1)
