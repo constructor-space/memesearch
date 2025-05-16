@@ -189,7 +189,7 @@ async def get_or_create_image(image_phash: str, text: str | None, embedding: lis
         image = Image(phash=image_phash, text=text, embedding=embedding)
         session.add(image)
         await session.flush()
-    if not image.embedding and embedding:
+    if image.embedding is None and embedding:
         image.embedding = embedding
         await session.flush()
     if not image.text and text:
