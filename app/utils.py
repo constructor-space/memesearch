@@ -3,7 +3,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Counter, Optional, Union
 
 import cv2
 import easyocr
@@ -14,8 +14,10 @@ from sqlalchemy.dialects.postgresql import insert
 from PIL import Image as PILImage
 from imagehash import phash
 from torch.nn.functional import embedding
+from telethon.tl.types import MessageEntityTextUrl
 
 from app import db
+from app.bot_client import Message
 from app.db import session, fetch_val, new_session
 from app.models import Channel, Image, ChannelMessage, Sticker
 from app.config import IMAGES_DIR
@@ -185,3 +187,9 @@ async def get_or_create_image(image_phash: str, text: str, embedding: list[float
         session.add(image)
         await session.flush()
     return image
+
+
+def is_ad_message(message: Message) -> bool:
+    links = Counter(x.url for x in message.entities if isinstance(x, MessageEntityTextUrl))
+    top_link_count = links.most_common(1)[0][1] if links else 0
+    return top_link_count >= 2

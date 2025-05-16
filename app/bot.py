@@ -26,6 +26,7 @@ from app.utils import (
     get_or_create_channel,
     StickerData,
     MessageData,
+    is_ad_message,
     process_media_message,
     download_to_path,
     embed_text,
@@ -193,6 +194,8 @@ async def on_download_channel(e):
     it = client.iter_messages(channel_tg)
     async for message in it:
         message: Message
+        if is_ad_message(message):
+            continue
         if message.photo:
             path, ph = await download_to_path(message)
             await work_q.put(MessageData(path, ph, channel.id, message.id))
