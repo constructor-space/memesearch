@@ -16,12 +16,12 @@ from app import db
 from app.db import session, fetch_val, new_session
 from app.models import Channel, Image, ChannelMessage, Sticker
 from app.config import IMAGES_DIR
-from app.userbot_client import client
 
 eocr = easyocr.Reader(['ru', 'en'])
 
 
 async def download_to_path(media) -> tuple[Path, str]:
+    from app.userbot_client import client
     with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
         await client.download_media(media, fp)
         fp.close()
