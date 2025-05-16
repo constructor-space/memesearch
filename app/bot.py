@@ -182,35 +182,32 @@ async def on_inline(e: InlineQuery.Event):
 
 
 @bot.on(NewMessage(pm_only=True))
-async def on_new_message(e: NewMessage.Event):
+async def on_pm(e: NewMessage.Event):
     if e.message.photo is None:
         await e.reply('Please send me an image for reverse search.')
         return
 
+    msg = await e.message.respond('Searching sources...')
     photo_save_path = f'/tmp/{e.message.photo.id}.jpg'
     await e.message.download_media(file=photo_save_path, thumb=-1)
     image_phash = str(phash(PILImage.open(photo_save_path)))
+
+    results = []
 
     messages = await db.fetch_vals(
         select(ChannelMessage).join(Image).where(Image.phash == image_phash)
     )
     if messages:
-        await e.reply(
-            '\n'.join(
-                [
-                    f't.me/c/{message.channel_id}/{message.message_id}'
-                    for message in messages
-                ]
-            )
-        )
-        return
+        results.extend([
+            f't.me/c/{message.channel_id}/{message.message_id}'
+            for message in messages
+        ])
     sticker_sets = await db.fetch_vals(
         select(StickerSet).join(Sticker).join(Image)
     )
     if sticker_sets:
-        await e.reply("\n".join([f"t.me/addstickers/{pack.short_name}" for pack in sticker_sets]))
-        return
-    await e.reply('Image not found.')
+        results.extend([f"t.me/addstickers/{pack.short_name}" for pack in sticker_sets])
+    await msg.edit('Found sources:\n' + '\n'.join(results) if results else 'No sources found')
 
 
 OCR_EXECUTOR = ThreadPoolExecutor(max_workers=1)
