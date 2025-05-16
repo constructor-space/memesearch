@@ -118,13 +118,13 @@ async def on_inline(e: InlineQuery.Event):
 
     qvec = embed_text(query)
 
-    emb_dist = func.max(Image.embedding.op("<=>")(qvec) - 0.8, 0).label('emb_dist')
+    emb_dist = func.greatest(sa.cast(Image.embedding.op("<=>")(qvec), sa.Float) - 0.8, 0.).label('emb_dist')
     txt_dist = Image.text.op('<->>')(query).label('txt_dist')
 
     dist = sa.case(
         (Image.embedding == None, txt_dist),
         (Image.text == None, emb_dist),
-        else_=func.min(emb_dist, txt_dist),
+        else_=func.least(emb_dist, txt_dist),
     ).label('dist')
 
     images = await db.fetch_vals(
