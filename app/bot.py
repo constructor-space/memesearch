@@ -1,4 +1,5 @@
 import asyncio
+import struct
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +12,7 @@ from telethon import Button, events
 from telethon.events import StopPropagation, InlineQuery
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputMessagesFilterPhotos, DocumentAttributeSticker, UpdateBotInlineSend
+from telethon.tl.types import DocumentAttributeSticker, UpdateBotInlineSend, Photo, Document, InputPhoto, InputDocument
 
 from app import db
 from app.bot_client import BotClient, MiddlewareCallback, Command, Message
@@ -83,11 +84,26 @@ async def on_start(e: Command.Event):
 
 
 def image_to_tg(image: Image):
+    if image.tg_ref:
+        return unpack_file_ref(image.tg_ref)
     if config.debug:
         return IMAGES_DIR / f'{image.phash}.jpg'
     else:
         return config.external_url + f'/{image.phash}.jpg'
 
+
+def pack_file_ref(file: InputPhoto | Photo | InputDocument | Document) -> bytes:
+    type_ = 1 if isinstance(file, (Photo, InputPhoto)) else 2
+    return struct.pack('>Hqq', type_, file.id, file.access_hash) + file.file_reference
+
+
+def unpack_file_ref(file_ref: bytes) -> InputPhoto | InputDocument:
+    type_, id_, access_hash = struct.unpack('>Hqq', file_ref[:2 + 8 + 8])
+    file_ref = file_ref[2 + 8 + 8:]
+    if type_ == 1:
+        return InputPhoto(id_, access_hash, file_ref)
+    elif type_ == 2:
+        return InputDocument(id_, access_hash, file_ref)
 
 
 @bot.on(InlineQuery())
@@ -121,8 +137,14 @@ async def on_inline(e: InlineQuery.Event):
             await e.answer(None)
         return
 
+    results = await asyncio.gather(
+        *[e.builder.photo(image_to_tg(img), id=f'{img.id}_{uuid4()}') for img in images]
+    )
+    for i, img in enumerate(images):
+        if not img.tg_ref:
+            img.tg_ref = pack_file_ref(results[i].photo)
     await e.answer(
-        [e.builder.photo(image_to_tg(img), id=f'{img.id}_{uuid4()}') for img in images],
+        results,
         gallery=True,
         next_offset=str(offset + limit),
     )
