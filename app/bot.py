@@ -168,7 +168,7 @@ async def on_download_channel(e):
 
     worker_task = asyncio.create_task(worker())
 
-    it = client.iter_messages(channel_tg, filter=InputMessagesFilterPhotos)
+    it = client.iter_messages(channel_tg)
     async for message in it:
         message: Message
         if message.photo:
@@ -177,10 +177,11 @@ async def on_download_channel(e):
         elif message.sticker:
             input_sticker_set = next(attr for attr in message.document.attributes if isinstance(attr, DocumentAttributeSticker)).stickerset
             sticker_set = await client(GetStickerSetRequest(input_sticker_set, 0))
-            await db.session.execute(insert(StickerSet).values(
-                id=sticker_set.set.id,
-                short_name=sticker_set.set.short_name,
-            ).on_conflict_do_nothing())
+            async with new_session():
+                await db.session.execute(insert(StickerSet).values(
+                    id=sticker_set.set.id,
+                    short_name=sticker_set.set.short_name,
+                ).on_conflict_do_nothing())
             for document in sticker_set.documents:
                 path, ph = await download_to_path(document)
                 await work_q.put(StickerData(path, ph, sticker_set.set.id))
