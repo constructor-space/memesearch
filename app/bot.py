@@ -13,7 +13,7 @@ from telethon.events import StopPropagation, InlineQuery
 from telethon.events.common import EventCommon
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputMessagesFilterPhotos
+from telethon.tl.types import InputMessagesFilterPhotos, DocumentAttributeSticker
 
 from app import db
 from app.bot_client import BotClient, MiddlewareCallback, NewMessage, Command, Message
@@ -65,62 +65,60 @@ def image_to_tg(image: Image):
         return config.external_url + f'/{image.phash}.jpg'
 
 
+from sqlalchemy import literal, Float
+from pgvector.sqlalchemy import Vector
+from app.utils import embed_text                   # ← tiny helper next to embed_image
+
+from sqlalchemy import bindparam, String
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import select
+from uuid import uuid4
+
 @bot.on(InlineQuery())
 async def on_inline(e: InlineQuery.Event):
-    offset = int(e.offset or '0')
+    query = (e.text or "").strip()
+    if not query:
+        return
 
-    dist = Image.text.op('<->>')(e.text).label('dist')
-    limit = 10
-    images = await db.fetch_vals(
-        select(Image).where(dist < 0.7).order_by(dist).limit(limit).offset(offset)
+    offset = int(e.offset or "0")
+    limit  = 10
+
+    # 1) Python-side embed the text
+    qvec = embed_text(query)  # -> list[512 floats]
+
+    # 2) bind-params for vector and text
+    vec_param = bindparam("qvec", value=qvec, type_=Vector(512))
+    txt_param = bindparam("qtxt", value=query, type_=String)
+
+    # 3) distance expressions
+    emb_dist = Image.embedding.op("<=>")(vec_param)  # cosine distance
+    txt_dist = Image.text.op("<->>")(txt_param)      # trigram distance
+
+    # 4) fuse with SQL literals so they aren’t extra params
+    score = (literal(0.65) * emb_dist + literal(0.35) * txt_dist).label("score")
+
+    # 5) build statement
+    stmt = (
+        select(Image)
+        .where(Image.embedding != None)
+        .order_by(score)
+        .limit(limit)
+        .offset(offset)
     )
 
+    # 6) execute, passing only the two bind-params
+    images = await db.fetch_vals(stmt, {"qvec": qvec, "qtxt": query})
+
+    # 7) reply
     await e.answer(
-        [
-            e.builder.photo(
-                image_to_tg(image),
-                id=str(uuid4()),
-            )
-            for image in images
-        ],
+        [e.builder.photo(image_to_tg(img), id=str(uuid4())) for img in images],
         gallery=True,
         next_offset=str(offset + limit),
     )
 
 
-@bot.on(NewMessage(pm_only=True))
-async def on_new_message(e: NewMessage.Event):
-    if e.message.photo is None:
-        await e.reply('Please send me an image for reverse search.')
-        return
-
-    photo_save_path = f'/tmp/{e.message.photo.id}.jpg'
-    await e.message.download_media(file=photo_save_path, thumb=-1)
-    image_phash = str(phash(PILImage.open(photo_save_path)))
-
-    messages = await fetch_vals(
-        select(ChannelMessage).join(Image).where(Image.phash == image_phash)
-    )
-    if messages:
-        await e.reply(
-            '\n'.join(
-                [
-                    f't.me/c/{message.channel_id}/{message.message_id}'
-                    for message in messages
-                ]
-            )
-        )
-        return
-    sticker_sets = await fetch_vals(
-        select(StickerSet).join(Sticker).join(Image)
-    )
-    if sticker_sets:
-        await e.reply("\n".join([f"t.me/addstickers/{pack.short_name}" for pack in sticker_sets]))
-        return
-    await e.reply('Image not found.')
-
-
 OCR_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+EMB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
 @bot.on(Command("download_channel"))
 async def on_download_channel(e):
@@ -144,9 +142,9 @@ async def on_download_channel(e):
             if item is None:
                 work_q.task_done()
                 break
-
             try:
-                await process_media_message(item, OCR_EXECUTOR)
+                # передаём оба executors
+                await process_media_message(item, OCR_EXECUTOR, EMB_EXECUTOR)
                 processed += 1
                 if time.time() - last_edited > 10:
                     last_edited = time.time()

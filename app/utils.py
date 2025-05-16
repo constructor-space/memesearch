@@ -3,23 +3,73 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import cv2
 import easyocr
-from sqlalchemy import select
+import torch
+import open_clip
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from PIL import Image as PILImage
 from imagehash import phash
+from torch.nn.functional import embedding
 
 from app import db
 from app.db import session, fetch_val, new_session
 from app.models import Channel, Image, ChannelMessage, Sticker
 from app.config import IMAGES_DIR
 
-eocr = easyocr.Reader(['ru', 'en'])
+# ── OCR ──────────────────────────────────────────────────────────────────────
+eocr = easyocr.Reader(["ru", "en"])
 
+# ── SigLIP-S/14 embedding model ──────────────────────────────────────────────
+def _pick_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
+_DEVICE = _pick_device()
+_PRECISION = "fp16" if _DEVICE.type == "cuda" else "fp32"
+
+_MODEL, _PREP = open_clip.create_model_from_pretrained(
+    "ViT-B-32", "openai", precision=_PRECISION
+)
+_MODEL.eval().to(_DEVICE)
+
+@torch.no_grad()
+def embed_image(path: str) -> list[float]:
+    img = _PREP(PILImage.open(path)).unsqueeze(0).to(_DEVICE)
+    if _DEVICE.type == "cuda":
+        with torch.cuda.amp.autocast():
+            vec = _MODEL.encode_image(img)
+    else:
+        vec = _MODEL.encode_image(img)
+    return vec.squeeze().cpu().tolist()  # 512-d vector
+
+@torch.no_grad()
+def embed_text(text: str) -> list[float]:
+    """
+    Encode a piece of text into the same 512-d vector space as images.
+    Returns a Python list of floats.
+    """
+    # tokenize returns a Tensor of shape [1, seq_len]
+    tokens = open_clip.tokenize([text]).to(_DEVICE)
+
+    # on CUDA use AMP for fp16, otherwise plain
+    if _DEVICE.type == "cuda":
+        with torch.cuda.amp.autocast():
+            vec = _MODEL.encode_text(tokens)
+    else:
+        vec = _MODEL.encode_text(tokens)
+
+    return vec.squeeze().cpu().tolist()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# download
+# ─────────────────────────────────────────────────────────────────────────────
 async def download_to_path(media) -> tuple[Path, str]:
     from app.userbot_client import client
     with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
@@ -28,13 +78,14 @@ async def download_to_path(media) -> tuple[Path, str]:
         ph = calculate_phash(fp.name)
         return save_image(fp.name, ph), ph
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+# dataclasses
+# ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class StickerData:
     file_path: Path
     phash: str
     sticker_pack_id: int
-
 
 @dataclass
 class MessageData:
@@ -43,12 +94,25 @@ class MessageData:
     channel_id: int
     message_id: int
 
-
-async def process_media_message(data: StickerData | MessageData, OCR_EXECUTOR):
+# ─────────────────────────────────────────────────────────────────────────────
+# main processor
+# ─────────────────────────────────────────────────────────────────────────────
+async def process_media_message(
+    data: Union[StickerData, MessageData],
+    OCR_EXECUTOR,
+    EMB_EXECUTOR,
+):
     loop = asyncio.get_running_loop()
+
+    # OCR text (CPU)
     text = await loop.run_in_executor(OCR_EXECUTOR, process_image, str(data.file_path))
+
+    # Embedding (GPU/MPS/CPU)
+    vec = await loop.run_in_executor(EMB_EXECUTOR, embed_image, str(data.file_path))
+
     async with new_session():
-        img = await get_or_create_image(data.phash, text)
+        img = await get_or_create_image(data.phash, text, vec)
+
         if isinstance(data, MessageData):
             await db.session.execute(
                 insert(ChannelMessage)
@@ -60,16 +124,18 @@ async def process_media_message(data: StickerData | MessageData, OCR_EXECUTOR):
                 .on_conflict_do_nothing()
             )
         elif isinstance(data, StickerData):
-            await db.session.execute(insert(Sticker).values(
-                image_id=img.id,
-                sticker_pack_id=data.sticker_pack_id,
-            ).on_conflict_do_nothing())
+            await db.session.execute(
+                insert(Sticker)
+                .values(image_id=img.id, sticker_pack_id=data.sticker_pack_id)
+                .on_conflict_do_nothing()
+            )
         else:
-            raise TypeError(f'Unknown item type: {type(data)}')
+            raise TypeError(f"Unknown item type: {type(data)}")
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+# misc helpers (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
 async def get_or_create_channel(id_: int, title: str, username: str) -> Channel:
-    """Get existing channel or create a new one"""
     channel = await Channel.get(id_)
     if not channel:
         channel = Channel(id=id_, name=title, username=username)
@@ -78,9 +144,6 @@ async def get_or_create_channel(id_: int, title: str, username: str) -> Channel:
     return channel
 
 def calculate_phash(image_path: str) -> str:
-    """Calculate perceptual hash of an image"""
-    with open(image_path, 'rb') as f:
-        file_content = f.read()
     return str(phash(PILImage.open(image_path)))
 
 def save_image(image_path: str, phash: str) -> Path:
@@ -108,16 +171,13 @@ def process_image(
     ocr_result = eocr.readtext(image_cv2)
     ocr_text = '\n'.join([item[1] for item in ocr_result])
 
-    return ocr_text or 'No text detected'
+    return ocr_text
 
 
-async def get_or_create_image(image_phash: str, text: str) -> Image:
-    """Get existing image or create a new one"""
+async def get_or_create_image(image_phash: str, text: str, embedding: list[float]) -> Image:
     image = await fetch_val(select(Image).where(Image.phash == image_phash))
-
     if not image:
-        image = Image(phash=image_phash, text=text)
+        image = Image(phash=image_phash, text=text, embedding=embedding)
         session.add(image)
         await session.flush()
-
     return image

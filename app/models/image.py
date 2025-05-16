@@ -1,4 +1,5 @@
 from typing import Optional
+from pgvector.sqlalchemy import Vector   # new import
 
 from app.models.base import Base
 import sqlalchemy as sa
@@ -9,8 +10,8 @@ class Image(Base):
     __tablename__ = 'image'
     id: Mapped[int] = mapped_column(primary_key=True)
     phash: Mapped[str] = mapped_column(unique=True)
-    keywords: Mapped[Optional[str]]
     text: Mapped[str]
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(512))
     __table_args__ = (
         sa.Index(
             'ix_search_data_text',
