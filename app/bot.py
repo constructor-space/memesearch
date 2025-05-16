@@ -6,7 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, select, literal
+import sqlalchemy as sa
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from telethon import Button, events
 from telethon.events import StopPropagation, InlineQuery
@@ -117,15 +118,19 @@ async def on_inline(e: InlineQuery.Event):
 
     qvec = embed_text(query)
 
-    emb_dist = Image.embedding.op("<=>")(qvec).label('emb_dist')
+    emb_dist = func.max(Image.embedding.op("<=>")(qvec) - 0.8, 0).label('emb_dist')
     txt_dist = Image.text.op('<->>')(query).label('txt_dist')
 
-    score = (literal(1) * func.coalesce(emb_dist, 0) + literal(1) * txt_dist).label("score")
+    dist = sa.case(
+        (Image.embedding == None, txt_dist),
+        (Image.text == None, emb_dist),
+        else_=func.min(emb_dist, txt_dist),
+    ).label('dist')
 
     images = await db.fetch_vals(
         select(Image)
-        # .where(score < 0.7)
-        .order_by(emb_dist)
+        .where(dist < 0.7)
+        .order_by(dist)
         .limit(limit)
         .offset(offset)
     )
