@@ -123,8 +123,8 @@ async def on_inline(e: InlineQuery.Event):
 
     images = await db.fetch_vals(
         select(Image)
-        .where(score < 0.7)
-        .order_by(score)
+        # .where(score < 0.7)
+        .order_by(emb_dist)
         .limit(limit)
         .offset(offset)
     )

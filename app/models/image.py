@@ -12,7 +12,7 @@ class Image(Base):
     phash: Mapped[str] = mapped_column(unique=True)
     tg_ref: Mapped[bytes | None]
     text: Mapped[str]
-    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(512))
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1152))
     __table_args__ = (
         sa.Index(
             'ix_search_data_text',

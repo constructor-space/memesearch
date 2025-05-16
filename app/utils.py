@@ -23,7 +23,6 @@ from app.config import IMAGES_DIR
 # ── OCR ──────────────────────────────────────────────────────────────────────
 eocr = easyocr.Reader(["ru", "en"])
 
-# ── SigLIP-S/14 embedding model ──────────────────────────────────────────────
 def _pick_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
@@ -31,13 +30,17 @@ def _pick_device() -> torch.device:
         return torch.device("mps")
     return torch.device("cpu")
 
-_DEVICE = _pick_device()
+_DEVICE    = _pick_device()
 _PRECISION = "fp16" if _DEVICE.type == "cuda" else "fp32"
 
+# ←── simply swap in the SigLIP2‐384 model name OpenCLIP knows
 _MODEL, _PREP = open_clip.create_model_from_pretrained(
-    "ViT-B-32", "openai", precision=_PRECISION
+    'hf-hub:timm/ViT-SO400M-16-SigLIP2-384',
+    precision=_PRECISION,
 )
 _MODEL.eval().to(_DEVICE)
+tokenizer = open_clip.get_tokenizer('hf-hub:timm/ViT-SO400M-16-SigLIP2-384')
+print(tokenizer)
 
 @torch.no_grad()
 def embed_image(path: str) -> list[float]:
@@ -56,7 +59,7 @@ def embed_text(text: str) -> list[float]:
     Returns a Python list of floats.
     """
     # tokenize returns a Tensor of shape [1, seq_len]
-    tokens = open_clip.tokenize([text]).to(_DEVICE)
+    tokens = tokenizer([text], context_length=_MODEL.context_length).to(_DEVICE)
 
     # on CUDA use AMP for fp16, otherwise plain
     if _DEVICE.type == "cuda":
@@ -105,7 +108,8 @@ async def process_media_message(
     loop = asyncio.get_running_loop()
 
     # OCR text (CPU)
-    text = await loop.run_in_executor(OCR_EXECUTOR, process_image, str(data.file_path))
+    # text = await loop.run_in_executor(OCR_EXECUTOR, process_image, str(data.file_path))
+    text = ""
 
     # Embedding (GPU/MPS/CPU)
     vec = await loop.run_in_executor(EMB_EXECUTOR, embed_image, str(data.file_path))

@@ -13,11 +13,13 @@ dependencies = [
     "open-clip-torch>=2.32.0",
     "opencv-python>=4.11.0.86",
     "pgvector>=0.4.1",
+    "protobuf>=6.31.0",
     "pydantic>=2.11.3",
     "pydantic-settings>=2.8.1",
     "sqlalchemy>=2.0.40",
     "telethon>=1.39.0",
     "tqdm>=4.67.1",
+    "transformers>=4.51.3",
     "uvicorn>=0.34.1",
 ]
 
