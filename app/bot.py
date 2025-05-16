@@ -3,8 +3,9 @@ from uuid import uuid4
 
 from imagehash import phash
 from sqlalchemy import select
+from telethon.tl.functions.messages import GetStickerSetRequest
+from telethon.tl.types import DocumentAttributeSticker
 from telethon import Button
-from telethon.tl.types import InputMessagesFilterPhotos
 
 from app import db
 from app.bot_client import BotClient, MiddlewareCallback, NewMessage, Command
@@ -13,8 +14,9 @@ from telethon.events import StopPropagation, InlineQuery
 from telethon.events.common import EventCommon
 from PIL import Image as PILImage
 
-from app.db import new_session, fetch_vals, session
+from app.db import new_session, fetch_vals
 from app.models import Image, ChannelMessage
+from app.models.sticker import Sticker, StickerSet
 from app.utils import get_or_create_channel, process_image, get_or_create_image
 from app.userbot_client import client
 
@@ -97,18 +99,24 @@ async def on_new_message(e: NewMessage.Event):
     messages = await fetch_vals(
         select(ChannelMessage).join(Image).where(Image.phash == image_phash)
     )
-    if not messages:
-        await e.reply('Image not found.')
-        return
-
-    await e.reply(
-        '\n'.join(
-            [
-                f't.me/c/{message.channel_id}/{message.message_id}'
-                for message in messages
-            ]
+    if messages:
+        await e.reply(
+            '\n'.join(
+                [
+                    f't.me/c/{message.channel_id}/{message.message_id}'
+                    for message in messages
+                ]
+            )
         )
+        return
+    sticker_sets = await fetch_vals(
+        select(StickerSet).join(Sticker).join(Image)
     )
+    if sticker_sets:
+        await e.reply("\n".join([f"t.me/addstickers/{pack.short_name}" for pack in sticker_sets]))
+        return
+    await e.reply('Image not found.')
+
 
 
 @bot.on(Command('download_channel'))
@@ -120,27 +128,43 @@ async def on_start(e: Command.Event):
     channel = await get_or_create_channel(
         channel_tg.id, channel_tg.title, channel_tg.username
     )
-    it = client.iter_messages(channel_tg, filter=InputMessagesFilterPhotos)
+    it = client.iter_messages(channel_tg)
     mess = await e.message.reply(f'Downloading 0 of {it.total}')
     i = 0
     async for message in it:
         if i % 10 == 0:
             await mess.edit(f'Downloading {i} of {it.total}')
-        if not message.photo:
-            continue
-        with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
-            await message.download_media(fp)
-            fp.close()
-            image_phash, ocr_text = await process_image(fp.name)
-        image = await get_or_create_image(image_phash, ocr_text)
-        await db.session.execute(
-            insert(ChannelMessage)
-            .values(
-                channel_id=channel.id,
-                image_id=image.id,
-                message_id=message.id,
+        if message.photo:
+            with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
+                await message.download_media(fp)
+                fp.close()
+                image_phash, ocr_text = await process_image(fp.name)
+            image = await get_or_create_image(image_phash, ocr_text)
+            await db.session.execute(
+                insert(ChannelMessage)
+                .values(
+                    channel_id=channel.id,
+                    image_id=image.id,
+                    message_id=message.id,
+                )
+                .on_conflict_do_nothing()
             )
-            .on_conflict_do_nothing()
-        )
+        elif message.sticker:
+            input_sticker_set = next(attr for attr in message.document.attributes if isinstance(attr, DocumentAttributeSticker)).stickerset
+            sticker_set = await client(GetStickerSetRequest(input_sticker_set, 0))
+            await db.session.execute(insert(StickerSet).values(
+                id=sticker_set.set.id,
+                short_name=sticker_set.set.short_name,
+            ).on_conflict_do_nothing())
+            for document in sticker_set.documents:
+                with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
+                    await client.download_media(document, fp)
+                    fp.close()
+                    image_phash, ocr_text = await process_image(fp.name)
+                image = await get_or_create_image(image_phash, ocr_text)
+                await db.session.execute(insert(Sticker).values(
+                    image_id=image.id,
+                    sticker_pack_id=sticker_set.set.id,
+                ).on_conflict_do_nothing())
         i += 1
     await mess.edit(f'Downloaded {i} of {it.total}')
