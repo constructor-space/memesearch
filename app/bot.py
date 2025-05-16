@@ -5,19 +5,20 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select, literal
 from sqlalchemy.dialects.postgresql import insert
-from telethon import Button
+from telethon import Button, events
 from telethon.events import StopPropagation, InlineQuery
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetStickerSetRequest
-from telethon.tl.types import InputMessagesFilterPhotos, DocumentAttributeSticker
+from telethon.tl.types import InputMessagesFilterPhotos, DocumentAttributeSticker, UpdateBotInlineSend
 
 from app import db
 from app.bot_client import BotClient, MiddlewareCallback, Command, Message
 from app.config import IMAGES_DIR, SESSION_FILE, config
 from app.db import new_session
 from app.models import Image
+from app.models.image_usage import ImageUsage
 from app.models.sticker import StickerSet
 from app.userbot_client import client
 from app.utils import (
@@ -26,6 +27,7 @@ from app.utils import (
     MessageData,
     process_media_message,
     download_to_path,
+    embed_text,
 )
 
 
@@ -44,6 +46,24 @@ async def create_db_session_middleware(
 
 bot = BotClient(str(SESSION_FILE), config.api_id, config.api_hash)
 bot.add_middleware(create_db_session_middleware)
+
+
+@bot.on(events.Raw([UpdateBotInlineSend]))
+async def feedback(event: UpdateBotInlineSend):
+    img_id, _ = event.id.split('_', 1)
+    if not img_id.isdigit():
+        return
+    image = await db.fetch_val(
+        select(Image).where(Image.id == int(img_id))
+    )
+    if not image:
+        return
+    db.session.add(
+        ImageUsage(
+            image_id=image.id,
+            user_id=event.user_id,
+        )
+    )
 
 
 @bot.on(Command('start'))
@@ -69,53 +89,40 @@ def image_to_tg(image: Image):
         return config.external_url + f'/{image.phash}.jpg'
 
 
-from sqlalchemy import literal, Float
-from pgvector.sqlalchemy import Vector
-from app.utils import embed_text                   # ← tiny helper next to embed_image
-
-from sqlalchemy import bindparam, String
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import select
-from uuid import uuid4
 
 @bot.on(InlineQuery())
 async def on_inline(e: InlineQuery.Event):
+    offset = int(e.offset or "0")
+    limit  = 10
     query = (e.text or "").strip()
     if not query:
         return
 
-    offset = int(e.offset or "0")
-    limit  = 10
+    qvec = embed_text(query)
 
-    # 1) Python-side embed the text
-    qvec = embed_text(query)  # -> list[512 floats]
+    emb_dist = Image.embedding.op("<=>")(qvec).label('emb_dist')
+    txt_dist = Image.text.op('<->>')(query).label('txt_dist')
 
-    # 2) bind-params for vector and text
-    vec_param = bindparam("qvec", value=qvec, type_=Vector(512))
-    txt_param = bindparam("qtxt", value=query, type_=String)
+    score = (literal(1) * func.coalesce(emb_dist, 0) + literal(1) * txt_dist).label("score")
 
-    # 3) distance expressions
-    emb_dist = Image.embedding.op("<=>")(vec_param)  # cosine distance
-    txt_dist = Image.text.op("<->>")(txt_param)      # trigram distance
-
-    # 4) fuse with SQL literals so they aren’t extra params
-    score = (literal(0.65) * emb_dist + literal(0.35) * txt_dist).label("score")
-
-    # 5) build statement
-    stmt = (
+    images = await db.fetch_vals(
         select(Image)
-        .where(Image.embedding != None)
+        .where(score < 0.7)
         .order_by(score)
         .limit(limit)
         .offset(offset)
     )
 
-    # 6) execute, passing only the two bind-params
-    images = await db.fetch_vals(stmt, {"qvec": qvec, "qtxt": query})
+    if not images:
+        if offset == 0:
+            await e.answer(switch_pm='No results found', switch_pm_param='no_results')
+        else:
+            # scrolled to the end
+            await e.answer(None)
+        return
 
-    # 7) reply
     await e.answer(
-        [e.builder.photo(image_to_tg(img), id=str(uuid4())) for img in images],
+        [e.builder.photo(image_to_tg(img), id=f'{img.id}_{uuid4()}') for img in images],
         gallery=True,
         next_offset=str(offset + limit),
     )
