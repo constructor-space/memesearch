@@ -9,11 +9,10 @@ import cv2
 import easyocr
 import torch
 import open_clip
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from PIL import Image as PILImage
 from imagehash import phash
-from torch.nn.functional import embedding
 from telethon.tl.types import MessageEntityTextUrl
 
 from app import db
@@ -184,16 +183,22 @@ def process_image(
     return ocr_text
 
 
-async def get_or_create_image(image_phash: str, text: str, embedding: list[float]) -> Image:
+async def get_or_create_image(image_phash: str, text: str | None, embedding: list[float] | None) -> Image:
     image = await fetch_val(select(Image).where(Image.phash == image_phash))
     if not image:
         image = Image(phash=image_phash, text=text, embedding=embedding)
         session.add(image)
         await session.flush()
+    if not image.embedding and embedding:
+        image.embedding = embedding
+        await session.flush()
+    if not image.text and text:
+        image.text = text
+        await session.flush()
     return image
 
 
 def is_ad_message(message: Message) -> bool:
-    links = Counter(x.url for x in message.entities if isinstance(x, MessageEntityTextUrl))
+    links = Counter(x.url for x in (message.entities or []) if isinstance(x, MessageEntityTextUrl))
     top_link_count = links.most_common(1)[0][1] if links else 0
     return top_link_count >= 2
