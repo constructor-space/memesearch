@@ -106,15 +106,19 @@ async def process_media_message(
     data: Union[StickerData, MessageData],
     OCR_EXECUTOR,
     EMB_EXECUTOR,
+    run_ocr: bool = True, run_vector: bool = True,
 ):
     loop = asyncio.get_running_loop()
 
     # OCR text (CPU)
-    # text = await loop.run_in_executor(OCR_EXECUTOR, process_image, str(data.file_path))
-    text = ""
+    text = None
+    if run_ocr:
+        text = await loop.run_in_executor(OCR_EXECUTOR, process_image, str(data.file_path))
 
-    # Embedding (GPU/MPS/CPU)
-    vec = await loop.run_in_executor(EMB_EXECUTOR, embed_image, str(data.file_path))
+
+    vec = None
+    if run_vector:
+        vec = await loop.run_in_executor(EMB_EXECUTOR, embed_image, str(data.file_path))
 
     async with new_session():
         img = await get_or_create_image(data.phash, text, vec)

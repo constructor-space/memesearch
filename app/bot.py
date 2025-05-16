@@ -7,7 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 import sqlalchemy as sa
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from telethon import Button, events
 from telethon.events import StopPropagation, InlineQuery
@@ -30,7 +30,7 @@ from app.utils import (
     is_ad_message,
     process_media_message,
     download_to_path,
-    embed_text,
+    embed_text, embed_image,
 )
 
 
@@ -159,12 +159,52 @@ async def on_inline(e: InlineQuery.Event):
 OCR_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 EMB_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
+@bot.on(Command("update_embedding"))
+async def on_update_embedding(e):
+    #looks into database, if vector embedding is None or empty, update it
+    if e.message.chat_id != config.admin_group_id:
+        return
+
+    mess = await e.message.reply("Processed 0")
+    last_edited = time.time()
+    updated = 0
+    images = await db.fetch_vals(
+        select(Image).where(Image.embedding == None)
+    )
+    if not images:
+        await e.message.reply("No images to update")
+        return
+    for img in images:
+        try:
+            vec = embed_image(str(IMAGES_DIR / f"{img.phash}.jpg"))
+            async with new_session():
+                await db.session.execute(update(Image).where(Image.id == img.id).values(embedding=vec))
+            updated += 1
+            if time.time() - last_edited > 10:
+                last_edited = time.time()
+                await mess.edit(f"Processed {updated} out of {len(images)}")
+        except Exception as exc:
+            await e.message.reply(f"Error processing {img}: {exc}")
+            traceback.print_exc()
+    await mess.edit(f"Updated {updated} out of {len(images)}")
+
+
 @bot.on(Command("download_channel"))
 async def on_download_channel(e):
     if e.message.chat_id != config.admin_group_id:
         return
 
     channel_name = e.args
+    #if "!vector" contains in message args, set run_ocr to False, delete it from args
+    run_vector = True
+    run_ocr = True
+    if "!vector" in channel_name:
+        run_ocr = False
+        channel_name = channel_name.replace("!vector", "").strip()
+    if "!text" in channel_name:
+        run_vector = False
+        channel_name = channel_name.replace("!text", "").strip()
+
     channel_tg = await client.get_entity(channel_name)
     async with new_session():
         channel = await get_or_create_channel(channel_tg.id, channel_tg.title, channel_tg.username)
@@ -183,7 +223,7 @@ async def on_download_channel(e):
                 break
             try:
                 # передаём оба executors
-                await process_media_message(item, OCR_EXECUTOR, EMB_EXECUTOR)
+                await process_media_message(item, OCR_EXECUTOR, EMB_EXECUTOR, run_ocr, run_vector)
                 processed += 1
                 if time.time() - last_edited > 10:
                     last_edited = time.time()

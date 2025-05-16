@@ -11,7 +11,7 @@ class Image(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     phash: Mapped[str] = mapped_column(unique=True)
     tg_ref: Mapped[bytes | None]
-    text: Mapped[str]
+    text: Mapped[str | None]
     embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1152))
     __table_args__ = (
         sa.Index(
