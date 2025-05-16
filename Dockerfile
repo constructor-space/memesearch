@@ -11,12 +11,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-workspace --no-dev
-RUN --mount=type=bind,source=app/scripts/download_model.py,target=download_model.py \
-    /app/.venv/bin/python download_model.py
 
 FROM base as runner
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /root/.EasyOCR /root/.EasyOCR
 COPY app app
 COPY alembic alembic
 COPY pyproject.toml uv.lock bot-cmd.sh alembic.ini ./
@@ -24,5 +21,8 @@ COPY pyproject.toml uv.lock bot-cmd.sh alembic.ini ./
 ENV PATH="/app/.venv/bin:$PATH"
 ENV DATA_DIR=/data
 ENV HOST=0.0.0.0
+
+ENV HF_HOME=/cache/huggingface
+ENV EASYOCR_MODULE_PATH=/cache/easyocr
 
 EXPOSE 8000
