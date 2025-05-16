@@ -15,8 +15,11 @@ class Image(Base):
     __table_args__ = (
         sa.Index(
             'ix_search_data_text',
-            sa.text("(text || coalesce(keywords, '')) gist_trgm_ops"),
+            'text',
             postgresql_using='gist',
+            postgresql_ops={
+                'text': 'gist_trgm_ops',
+            },
         ),
     )
 
