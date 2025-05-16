@@ -2,31 +2,35 @@ import asyncio
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 from uuid import uuid4
 
-from PIL import Image as PILImage
-from imagehash import phash
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from telethon import Button
 from telethon.events import StopPropagation, InlineQuery
-from telethon.events.common import EventCommon
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import GetStickerSetRequest
 from telethon.tl.types import InputMessagesFilterPhotos, DocumentAttributeSticker
 
 from app import db
-from app.bot_client import BotClient, MiddlewareCallback, NewMessage, Command, Message
+from app.bot_client import BotClient, MiddlewareCallback, Command, Message
 from app.config import IMAGES_DIR, SESSION_FILE, config
-from app.db import new_session, fetch_vals
-from app.models import Image, ChannelMessage
-from app.models.sticker import Sticker, StickerSet
+from app.db import new_session
+from app.models import Image
+from app.models.sticker import StickerSet
 from app.userbot_client import client
-from app.utils import get_or_create_channel, StickerData, MessageData, process_media_message, download_to_path
+from app.utils import (
+    get_or_create_channel,
+    StickerData,
+    MessageData,
+    process_media_message,
+    download_to_path,
+)
 
 
 async def create_db_session_middleware(
-    event: EventCommon, callback: MiddlewareCallback
+    _event: Any, callback: MiddlewareCallback
 ):
     sp = None
     async with new_session():

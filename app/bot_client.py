@@ -2,7 +2,7 @@ import functools
 import inspect
 import logging
 import re
-from typing import Callable, Awaitable, Sequence, BinaryIO, Type
+from typing import Any, Callable, Awaitable, Sequence, BinaryIO, Type
 
 import telethon.sessions
 from telethon import TelegramClient, events, hints, tl
@@ -12,13 +12,10 @@ from telethon.tl import types, custom
 
 logger = logging.getLogger(__name__)
 
-EventHandler = Callable[[EventCommon], Awaitable[None]]
+EventType = Any
+EventHandler = Callable[[EventType], Awaitable[None]]
 MiddlewareCallback = Callable[[], Awaitable[None]]
-Middleware = Callable[[EventCommon, MiddlewareCallback], Awaitable[None]]
-
-
-def is_raw(event_builder: EventBuilder | Type[EventBuilder]):
-    return event_builder is events.Raw or isinstance(event_builder, events.Raw)
+Middleware = Callable[[EventType, MiddlewareCallback], Awaitable[None]]
 
 
 async def _handler_wrapper(
@@ -88,22 +85,17 @@ class BotClient(TelegramClient):
         self.me = await self.get_me()
 
     async def _handle_event(
-        self, handler: EventHandler, builder: EventBuilder, event: EventCommon
+        self, handler: EventHandler, builder: EventBuilder, event: EventType
     ):
         callback = functools.partial(handler, event)
         callback = functools.partial(_handler_wrapper, event, builder, callback)
-        if not is_raw(builder):
-            for middleware in reversed(self._middlewares):
-                callback = functools.partial(middleware, event, callback)
+        for middleware in reversed(self._middlewares):
+            callback = functools.partial(middleware, event, callback)
         await callback()
 
     def add_event_handler(
         self, callback: EventHandler, event_builder: EventBuilder = None
     ):
-        if is_raw(event_builder):
-            logger.warning(
-                'Handler for events.Raw added. Middlewares will not be applied for that event.'
-            )
         handler = self._handlers_map[callback] = functools.partial(
             self._handle_event,
             callback,
