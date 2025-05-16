@@ -1,18 +1,71 @@
+import asyncio
 import shutil
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import cv2
 import easyocr
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from PIL import Image as PILImage
 from imagehash import phash
 
-from app.db import session, fetch_val
-from app.models import Channel, Image
+from app import db
+from app.db import session, fetch_val, new_session
+from app.models import Channel, Image, ChannelMessage, Sticker
 from app.config import IMAGES_DIR
+from app.userbot_client import client
 
 eocr = easyocr.Reader(['ru', 'en'])
+
+
+async def download_to_path(media) -> tuple[Path, str]:
+    with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
+        await client.download_media(media, fp)
+        fp.close()
+        ph = calculate_phash(fp.name)
+        return save_image(fp.name, ph), ph
+
+
+@dataclass
+class StickerData:
+    file_path: Path
+    phash: str
+    sticker_pack_id: int
+
+
+@dataclass
+class MessageData:
+    file_path: Path
+    phash: str
+    channel_id: int
+    message_id: int
+
+
+async def process_media_message(data: StickerData | MessageData, OCR_EXECUTOR):
+    loop = asyncio.get_running_loop()
+    text = await loop.run_in_executor(OCR_EXECUTOR, process_image, str(data.file_path))
+    async with new_session():
+        img = await get_or_create_image(data.phash, text)
+        if isinstance(data, MessageData):
+            await db.session.execute(
+                insert(ChannelMessage)
+                .values(
+                    channel_id=data.channel_id,
+                    image_id=img.id,
+                    message_id=data.message_id,
+                )
+                .on_conflict_do_nothing()
+            )
+        elif isinstance(data, StickerData):
+            await db.session.execute(insert(Sticker).values(
+                image_id=img.id,
+                sticker_pack_id=data.sticker_pack_id,
+            ).on_conflict_do_nothing())
+        else:
+            raise TypeError(f'Unknown item type: {type(data)}')
 
 
 async def get_or_create_channel(id_: int, title: str, username: str) -> Channel:
