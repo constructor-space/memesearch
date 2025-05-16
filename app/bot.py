@@ -108,41 +108,7 @@ def unpack_file_ref(file_ref: bytes) -> InputPhoto | InputDocument:
         return InputDocument(id_, access_hash, file_ref)
 
 
-@bot.on(InlineQuery())
-async def on_inline(e: InlineQuery.Event):
-    offset = int(e.offset or "0")
-    limit  = 10
-    query = (e.text or "").strip()
-    if not query:
-        return
-
-    qvec = embed_text(query)
-
-    emb_dist = func.greatest(sa.cast(Image.embedding.op("<=>")(qvec), sa.Float) - 0.8, 0.).label('emb_dist')
-    txt_dist = Image.text.op('<->>')(query).label('txt_dist')
-
-    dist = sa.case(
-        (Image.embedding == None, txt_dist),
-        (Image.text == None, emb_dist),
-        else_=func.least(emb_dist, txt_dist),
-    ).label('dist')
-
-    images = await db.fetch_vals(
-        select(Image)
-        .where(dist < 0.7)
-        .order_by(dist)
-        .limit(limit)
-        .offset(offset)
-    )
-
-    if not images:
-        if offset == 0:
-            await e.answer(switch_pm='No results found', switch_pm_param='no_results')
-        else:
-            # scrolled to the end
-            await e.answer(None)
-        return
-
+async def respond_with_images(e: InlineQuery.Event, images, offset, limit):
     results = await asyncio.gather(
         *[e.builder.photo(image_to_tg(img), id=f'{img.id}_{uuid4()}') for img in images]
     )
@@ -154,6 +120,64 @@ async def on_inline(e: InlineQuery.Event):
         gallery=True,
         next_offset=str(offset + limit),
     )
+
+
+async def respond_with_most_used(e: InlineQuery.Event, offset, limit, query):
+    usage_count_q = (
+        select(
+            ImageUsage.image_id.label('image_id'),
+            func.count(ImageUsage.id).label('usage_count'),
+        )
+        .group_by(ImageUsage.image_id)
+        .subquery()
+    )
+
+    images = await db.fetch_vals(
+        select(Image)
+        .join(usage_count_q, usage_count_q.c.image_id == Image.id)
+        # .where(usage_count_q.c.usage_count > 0)
+        .order_by(usage_count_q.c.usage_count.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+
+    return await respond_with_images(e, images, offset, limit)
+
+
+@bot.on(InlineQuery())
+async def on_inline(e: InlineQuery.Event):
+    offset = int(e.offset or '0')
+    limit = 10
+    query = (e.text or '').strip()
+    if not query:
+        return await respond_with_most_used(e, offset, limit, query)
+
+    qvec = embed_text(query)
+
+    emb_dist = func.greatest(
+        sa.cast(Image.embedding.op('<=>')(qvec), sa.Float) - 0.8, 0.0
+    ).label('emb_dist')
+    txt_dist = Image.text.op('<->>')(query).label('txt_dist')
+
+    dist = sa.case(
+        (Image.embedding == None, txt_dist),
+        (Image.text == None, emb_dist),
+        else_=func.least(emb_dist, txt_dist),
+    ).label('dist')
+
+    images = await db.fetch_vals(
+        select(Image).where(dist < 0.7).order_by(dist).limit(limit).offset(offset)
+    )
+
+    if not images:
+        if offset == 0:
+            await e.answer(switch_pm='No results found', switch_pm_param='no_results')
+        else:
+            # scrolled to the end
+            await e.answer(None)
+        return
+
+    await respond_with_images(e, images, offset, limit)
 
 
 OCR_EXECUTOR = ThreadPoolExecutor(max_workers=1)
