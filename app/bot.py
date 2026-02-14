@@ -89,8 +89,11 @@ async def on_start(e: Command.Event):
 def image_to_tg(image: Image):
     if image.tg_ref:
         return unpack_file_ref(image.tg_ref)
+    file_path = IMAGES_DIR / f'{image.phash}.jpg'
+    if not file_path.exists():
+        return None
     if config.debug:
-        return IMAGES_DIR / f'{image.phash}.jpg'
+        return file_path
     else:
         return config.external_url + f'/{image.phash}.jpg'
 
@@ -110,8 +113,10 @@ def unpack_file_ref(file_ref: bytes) -> InputPhoto | InputDocument:
 
 
 async def respond_with_images(e: InlineQuery.Event, images, offset, limit):
+    converted_images = [(image_to_tg(img), img) for img in images]
+    filtered_images = [x for x in converted_images if x[0]]
     results = await asyncio.gather(
-        *[e.builder.photo(image_to_tg(img), id=f'{img.id}_{uuid4()}') for img in images]
+        *[e.builder.photo(input_img, id=f'{img.id}_{uuid4()}') for input_img, img in filtered_images]
     )
     for i, img in enumerate(images):
         if not img.tg_ref:
